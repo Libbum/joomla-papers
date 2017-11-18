@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="module" version="3.1.0" client="site" method="upgrade">
+    <name>Papers</name>
+    <author>Tim DuBois</author>
+    <version>1.0</version>
+    <description>Pull a list of papers from multilple ORCID sources and display them.</description>
+    <files>
+        <filename>mod_papers.xml</filename>
+        <filename module="mod_papers">mod_papers.php</filename>
+        <filename>index.html</filename>
+        <filename>helper.php</filename>
+        <filename>tmpl/default.php</filename>
+        <filename>tmpl/index.html</filename>
+    </files>
+    <config>
+    </config>
+</extension>
