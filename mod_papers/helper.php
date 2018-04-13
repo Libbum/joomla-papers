@@ -1,3 +1,4 @@
+
 <?php
 /**
  * Helper class for the Papers module
@@ -13,150 +14,257 @@
  */
 class ModPapersHelper
 {
-    /**
-     * Retrieves the required informaton from ORCID
-     *
-     * @param   array  $orcids An object containing the ORCIDs to be searched
-     *
-     * @access public
-     */
-    public static function getPapers($orcids)
-    {
-        foreach ($orcids as $id) {
-            // create a new cURL resource
-            $ch  = curl_init();
-            // set URL and other appropriate options
-            $options = array(
-                CURLOPT_URL => 'http://pub.orcid.org/v1.2/' . $id . '/orcid-works',
-                CURLOPT_HEADER => false,
-                CURLOPT_RETURNTRANSFER => 1,
-                CURLOPT_HTTPHEADER => array(
-                    'Accept: application/orcid+json'
-                )
-            );
-            curl_setopt_array($ch, $options);
-            // grab URL and pass it to the browser
-            $raw = curl_exec($ch);
-            // close cURL resource, and free up system resources
-            curl_close($ch);
-            //Decode json data
-            $data  = json_decode($raw, true);
-            //Grab usefull stuff and merge
-            $works = $data['orcid-profile']['orcid-activities']['orcid-works']['orcid-work'];
-            if (!empty($works)) {
-                if ($id === reset($orcids)) {
-                    $mergedworks = $works;
-                } else {
-                    $mergedworks = array_merge($mergedworks, $works);
-                }
-            }
-        }
+	/**
+	 * Retrieves the required informaton from ORCID
+	 *
+	 * @param   array  $orcids An object containing the ORCIDs to be searched
+	 *
+	 * @access public
+	 */
 
-        //Get all dois
-        $dois = array();
-        foreach ($mergedworks as $key => $work) {
-            if (!is_null($work['work-external-identifiers'])) {
-                foreach ($work['work-external-identifiers']['work-external-identifier'] as $ids) {
-                    if (strcmp($ids['work-external-identifier-type'], 'DOI') == 0) {
-                        $dois[] = $ids['work-external-identifier-id']['value'];
-                    }
-                }
-                $mergedworks[$key] = array_merge($mergedworks[$key], array('parse'=>1,'udoi'=>'')); //Build a parse check field. Parse by default, set to zero if there's an issue.
-            } else {
-                unset($mergedworks[$key]); //For now, kill anything without a DOI.
-            }
-        }
+	public static function getPapers($orcids){
+		$lastRunLog =  dirname(__FILE__) . '/lastrun.log';
+		$data_file = dirname(__FILE__) . '/pubs.html';
+		if (file_exists($lastRunLog) and file_exists($data_file)) {
+			$lastRun = file_get_contents($lastRunLog);
+			if (time() - (int)$lastRun >= 86400) {
+				//its been more than a day so run our external file
+				$papers = self::genPapers($orcids);
+				//update lastrun.log with current time
+				file_put_contents($lastRunLog, time());
+			} else {
+				$papers = file_get_contents($data_file);	
+			}
+		} else {
+			$papers = self::genPapers($orcids);
+		}
 
-        //Find all unique dois
-        $udois = array_unique($dois);
+		return $papers;
+	}
 
-        //sanitise merged array.
-        foreach ($mergedworks as $mkey => $work) {
-            //Identify Duplicates
-            foreach ($work['work-external-identifiers']['work-external-identifier'] as $ids) {
-                if (strcmp($ids['work-external-identifier-type'], 'DOI') == 0) {
-                    $doi = $ids['work-external-identifier-id']['value'];
-                    $mergedworks[$mkey]['udoi'] = $doi;
-                    $key = array_search($doi, $udois); // Find where DOI is in the unique list
+	public static function genPapers($orcids)
+	{
+		// array of curl handles
+		$multiCurl = array();
+		// data to be returned
+		$mdata = array();
 
-                    unset($udois[$key]); //Found one, don't need another.
-                    if ($key === false) {
-                        $mergedworks[$mkey]['parse'] = 0; //Don't parse this entry
-                    }
-                }
-            }
-        }
+		$mh  = curl_multi_init();
+		$counter = 0;
+		foreach ($orcids as $id) {
 
-        //Sort array by year
-        usort($mergedworks, function($a, $b) {
-            return ($a['publication-date']['year']['value'] > $b['publication-date']['year']['value']) ? -1 : 1;
-        });
+			// create a new cURL resource
+			$ch  = curl_init();
+			// set URL and other appropriate options
+			$options = array(
+				CURLOPT_URL => 'https://pub.orcid.org/v2.1/' . $id . '/works',
+				CURLOPT_HEADER => false,
+				CURLOPT_RETURNTRANSFER => 1,
+				CURLOPT_HTTPHEADER => array(
+					'Accept: application/orcid+json'
+				)
+			);
+			curl_setopt_array($ch, $options);
+			curl_multi_add_handle($mh, $ch);
+			$multiCurl[$id] = $ch;
+			$counter = $counter + 1;
+		}
 
-        $curr_year = date("Y");
-        $output = "<h2>" . $curr_year . "</h2>";
-        foreach ($mergedworks as $work) {
-            //Identify Results earlier than 2011
-            $year = $work['publication-date']['year']['value'];
-            if ($year < '2011') {
-                $work['parse'] = 0; //Don't parse this entry
-            } elseif ($year < $curr_year) {
-                //As our list is sorted, we've moved to the previous year now. Separate the results.
-                $curr_year = $year;
-                $output .= "<br><h2>" . $curr_year . "</h2>";
-            }
-            //Print results
-            if ($work['parse'] === 1) {
-                $output .= '<b>' . $work['work-title']['title']['value'] . '</b><br>';
-                // $doi = $ids['work-external-identifier-id']['value'];
 
-                if (strcmp($work['work-citation']['work-citation-type'], 'BIBTEX') == 0) {
-                    $bibtex = $work['work-citation']['citation'];
-                    $volume = '';
-                    $pages  = '';
-                    if (preg_match('/volume\\s?=\\s?{(\\d+)}/', $bibtex, $match)) {
-                        $volume = $match[1];
-                    }
-                    if (preg_match('/pages\\s?=\\s?{([0-9-]+)}/', $bibtex, $match)) {
-                        $pages = $match[1];
-                    }
-                }
+		// While we're still active, execute curl
+		$active = null;
+		do {
+			$mrc = curl_multi_exec($mh, $active);
+                        usleep(3000);
+		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
 
-                if (!is_null($work['work-contributors'])) {
-                    foreach ($work['work-contributors']['contributor'] as $authors) {
-                        if (($authors === reset($work['work-contributors']['contributor'])) && ($authors === end($work['work-contributors']['contributor']))) {
-                            $output .= $authors['credit-name']['value'] . '<br>';
-                        } elseif ($authors === reset($work['work-contributors']['contributor'])) {
-                            $output .= $authors['credit-name']['value'];
-                        } elseif ($authors === end($work['work-contributors']['contributor'])) {
-                            $output .= ' and ' . $authors['credit-name']['value'] . '<br>';
-                        } else {
-                            $output .= ', ' . $authors['credit-name']['value'];
-                        }
-                    }
-                } else {
-                    //Get authorlist from bibtex
-                    if (preg_match('/author\\s?=\\s?{(.+)}/', $bibtex, $match)) {
-                        $authorstr = $match[1];
-                        $authors   = explode(" and ", $authorstr);
-                        foreach ($authors as $author) {
-                            if (($author === reset($authors)) && ($author === end($authors))) {
-                                $output .= $author . '<br>';
-                            } elseif ($author === reset($authors)) {
-                                $output .= $author;
-                            } elseif ($author === end($authors)) {
-                                $output .= ' and ' . $author . '<br>';
-                            } else {
-                                $output .= ', ' . $author;
-                            }
-                        }
-                    }
-                }
+		while ($active && $mrc == CURLM_OK) {
+			// Wait for activity on any curl-connection
+			if (curl_multi_select($mh) == -1) {
+                        	usleep(3000);
+			}
+				// Continue to exec until curl is ready to
+				// give us more data
+				do {
+					$mrc = curl_multi_exec($mh, $active);
+				} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+			
+		}
 
-                $output .= '<a href="http://dx.doi.org/' . $work['udoi'] . '">' . $work['journal-title']['value'] . ' <b>' . $volume . '</b> ' . $pages . ' (' . $work['publication-date']['year']['value'] . ')</a><br style="line-height:2.5em;">';
-            }
-        }
+		// get content and remove handles
+		$mergedworks = array();
+		foreach($multiCurl as $k => $ch) {
+			$mdata[$k] = json_decode(curl_multi_getcontent($ch), true);
+			curl_multi_remove_handle($mh, $ch);
+			$works = $mdata[$k]['group'];
+			if (!empty($works)) {
+				$mergedworks = array_merge($mergedworks, $works);
+			}
+		}
+		// close
+		curl_multi_close($mh);
 
-        return $output;
-    }
+		//Get all dois
+		$dois = array();
+		foreach ($mergedworks as $key => $work) {
+			if (!is_null($work['external-ids'])) {
+
+				foreach ($work['external-ids']['external-id'] as $ids) {
+					if (strcmp($ids['external-id-type'], 'doi') == 0) {
+						$dois[] = $ids['external-id-value'];
+					}
+				}
+				$mergedworks[$key] = array_merge($mergedworks[$key], array('parse'=>1,'udoi'=>'')); //Build a parse check field. Parse by default, set to zero if there's an issue.
+			} else {
+				unset($mergedworks[$key]); //For now, kill anything without a DOI.
+			}
+		}
+
+		//Find all unique dois
+		$udois = array_unique($dois);
+
+		//sanitise merged array.
+		foreach ($mergedworks as $mkey => $work) {
+			//Identify Duplicates
+			foreach ($work['external-ids']['external-id'] as $ids) {
+				if (strcmp($ids['external-id-type'], 'doi') == 0) {
+					$doi = $ids['external-id-value'];
+					$mergedworks[$mkey]['udoi'] = $doi;
+					$key = array_search($doi, $udois); // Find where DOI is in the unique list
+
+					unset($udois[$key]); //Found one, don't need another.
+					if ($key === false) {
+						$mergedworks[$mkey]['parse'] = 0; //Don't parse this entry
+					}
+				}
+			}
+		}
+
+		//Sort array by year
+		usort($mergedworks, function($a, $b) {
+			return ($a['work-summary']['0']['publication-date']['year']['value'] > $b['work-summary']['0']['publication-date']['year']['value']) ? -1 : 1;
+		});
+
+		$curr_year = date("Y");
+		$output = "<h2>" . $curr_year . "</h2>";
+
+		// array of curl handles
+		$multiCurl = array();
+		// data to be returned
+		$mdata = array();
+
+		$mh  = curl_multi_init();
+		$id = 0;
+		foreach ($mergedworks as $work) {
+			//Identify Results earlier than 2011
+			$year = $work['work-summary']['0']['publication-date']['year']['value'];
+			if ($year < '2011') {
+				$work['parse'] = 0; //Don't parse this entry
+			}
+			//Print results
+			if ($work['parse'] === 1) {
+
+				// create a new cURL resource
+				// set URL and other appropriate options
+				$ch  = curl_init();
+				$options = array(
+					CURLOPT_URL => 'https://pub.orcid.org/v2.1' . $work['work-summary']['0']['path'],
+					CURLOPT_HEADER => false,
+					CURLOPT_RETURNTRANSFER => 1,
+					CURLOPT_HTTPHEADER => array(
+						'Accept: application/orcid+json'
+					)
+				);
+
+				curl_setopt_array($ch, $options);
+				curl_multi_add_handle($mh, $ch);
+				$multiCurl[$id] = $ch;
+				$id = $id + 1;
+			}
+		}
+
+
+		// While we're still active, execute curl
+		$active = null;
+		do {
+			$mrc = curl_multi_exec($mh, $active);
+                        usleep(50000);
+		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+
+		while ($active && ($mrc == CURLM_OK)) {
+			// Wait for activity on any curl-connection
+			if (curl_multi_select($mh) != -1) {
+                            usleep(50000);
+			
+
+				// Continue to exec until curl is ready to
+				// give us more data
+				do {
+					$mrc = curl_multi_exec($mh, $active);
+				} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+			}
+		}
+
+		// get content and remove handles
+		foreach($multiCurl as $k => $ch) {
+			$mdata[$k] = json_decode(curl_multi_getcontent($ch), true);
+                            usleep(3000);
+			curl_multi_remove_handle($mh, $ch);
+		}
+		// close
+		curl_multi_close($mh);
+
+		foreach ($mdata as $data) {
+			$year = $data['publication-date']['year']['value'];
+			if (!$year==null){
+				if ((int)$year < $curr_year) {
+					//As our list is sorted, we've moved to the previous year now. Separate the results.
+					$curr_year = $year;
+					$output .= "<br><h2>" . $curr_year . "</h2>";
+				}
+				$output .= '<b>' . $data['title']['title']['value'] . '</b><br>';
+				// $doi = $ids['work-external-identifier-id']['value'];
+
+				if (strcmp($data['citation']['citation-type'], 'BIBTEX') == 0) {
+					$bibtex = $data['citation']['citation-value'];
+					$volume = '';
+					$pages  = '';
+					if (preg_match('/volume\\s?=\\s?{(\\d+)}/', $bibtex, $match)) {
+						$volume = $match[1];
+					}
+					if (preg_match('/pages\\s?=\\s?{([0-9-]+)}/', $bibtex, $match)) {
+						$pages = $match[1];
+					}
+				}
+
+				if (preg_match('/author\\s?=\\s?{(.+)}/', $bibtex, $match)) {
+					$authorstr = $match[1];
+					$ind = strpos($authorstr, '}');
+					if (is_int($ind)){
+						$authorstr = substr($authorstr, 0, $ind);
+					}
+					$authors   = explode(" and ", $authorstr);
+					foreach ($authors as $author) {
+						if (($author === reset($authors)) && ($author === end($authors))) {
+							$output .= $author . '<br>';
+						} elseif ($author === reset($authors)) {
+							$output .= $author;
+						} elseif ($author === end($authors)) {
+							$output .= ' and ' . $author . '<br>';
+						} else {
+							$output .= ', ' . $author;
+						}
+					}
+
+					$output .= '<a href="http://dx.doi.org/' . $data['external-ids']['external-id'][0]['external-id-value'] . '">' . $data['journal-title']['value'] . ' <b>' . $volume . '</b> ' . $pages . ' (' . $data['publication-date']['year']['value'] . ')</a><br style="line-height:2.5em;">';
+				}
+			}
+		}
+		curl_close($ch);
+		$myfile = fopen(dirname(__FILE__) . '/pubs.html', "w") or die("Unable to open file!");
+		fwrite($myfile, $output);
+		fclose($myfile);
+		return $output;
+	}
 }
 ?>
