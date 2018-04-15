@@ -1,4 +1,3 @@
-
 <?php
 /**
  * Helper class for the Papers module
@@ -25,25 +24,87 @@ class ModPapersHelper
 	public static function getPapers($orcids){
 		$lastRunLog =  dirname(__FILE__) . '/lastrun.log';
 		$data_file = dirname(__FILE__) . '/pubs.html';
-		if (file_exists($lastRunLog) and file_exists($data_file)) {
-			$lastRun = file_get_contents($lastRunLog);
-			if (time() - (int)$lastRun >= 86400) {
-				//its been more than a day so run our external file
-				$papers = self::genPapers($orcids);
-				//update lastrun.log with current time
-				file_put_contents($lastRunLog, time());
-			} else {
-				$papers = file_get_contents($data_file);	
-			}
-		} else {
+		$lastRun = file_get_contents($lastRunLog);
+		if (time() - (int)$lastRun >= 86400) {
+			//its been more than a day so run our external file
 			$papers = self::genPapers($orcids);
+			//update lastrun.log with current time
+			file_put_contents($lastRunLog, time());
+		} else {
+			$papers = file_get_contents($data_file);	
 		}
 
 		return $papers;
 	}
 
-	public static function genPapers($orcids)
-	{
+	public static function getPapersForYearsBatch($years, $mergedworks){
+
+		// array of curl handles
+		$multiCurl = array();
+		$mh  = curl_multi_init();
+		$id = 0;
+
+		foreach ($mergedworks as $work) {
+			//Identify Results earlier than 2011
+			$year = $work['work-summary']['0']['publication-date']['year']['value'];
+
+			//Print results
+			if ($work['parse'] === 1 && in_array($year, $years)) {
+
+				// create a new cURL resource
+				// set URL and other appropriate options
+				$ch  = curl_init();
+				$options = array(
+					CURLOPT_URL => 'https://pub.orcid.org/v2.1' . $work['work-summary']['0']['path'],
+					CURLOPT_HEADER => false,
+					CURLOPT_RETURNTRANSFER => 1,
+					CURLOPT_HTTPHEADER => array(
+						'Accept: application/orcid+json'
+					)
+				);
+
+				curl_setopt_array($ch, $options);
+				curl_multi_add_handle($mh, $ch);
+				$multiCurl[$id] = $ch;
+				$id = $id + 1;
+			}
+		}
+
+		// While we're still active, execute curl
+		$active = null;
+		do {
+			$mrc = curl_multi_exec($mh, $active);
+		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+
+		while ($active && ($mrc == CURLM_OK)) {
+			// Wait for activity on any curl-connection
+			if (curl_multi_select($mh) == -1) {
+                        	usleep(300);
+			}
+			//if (curl_multi_select($mh) != -1) {
+			
+
+				// Continue to exec until curl is ready to
+				// give us more data
+				do {
+					$mrc = curl_multi_exec($mh, $active);
+				} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+			//}
+		}
+
+		// get content and remove handles
+		foreach($multiCurl as $k => $ch) {
+			$mdata[$k] = json_decode(curl_multi_getcontent($ch), true);
+			curl_multi_remove_handle($mh, $ch);
+		}
+		// close
+		curl_multi_close($mh);
+		curl_close($ch);
+		return $mdata;
+	}
+
+	public static function getWorkSummaries($orcids){
+	
 		// array of curl handles
 		$multiCurl = array();
 		// data to be returned
@@ -75,13 +136,13 @@ class ModPapersHelper
 		$active = null;
 		do {
 			$mrc = curl_multi_exec($mh, $active);
-                        usleep(3000);
+                        usleep(300);
 		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
 
 		while ($active && $mrc == CURLM_OK) {
 			// Wait for activity on any curl-connection
 			if (curl_multi_select($mh) == -1) {
-                        	usleep(3000);
+                        	usleep(300);
 			}
 				// Continue to exec until curl is ready to
 				// give us more data
@@ -103,7 +164,14 @@ class ModPapersHelper
 		}
 		// close
 		curl_multi_close($mh);
+		curl_close($ch);
+	        return $mergedworks;
+	}
 
+	public static function genPapers($orcids)
+	{
+
+	        $mergedworks = self::getWorkSummaries($orcids);
 		//Get all dois
 		$dois = array();
 		foreach ($mergedworks as $key => $work) {
@@ -148,71 +216,19 @@ class ModPapersHelper
 		$curr_year = date("Y");
 		$output = "<h2>" . $curr_year . "</h2>";
 
-		// array of curl handles
-		$multiCurl = array();
 		// data to be returned
 		$mdata = array();
 
-		$mh  = curl_multi_init();
-		$id = 0;
-		foreach ($mergedworks as $work) {
-			//Identify Results earlier than 2011
-			$year = $work['work-summary']['0']['publication-date']['year']['value'];
-			if ($year < '2011') {
-				$work['parse'] = 0; //Don't parse this entry
-			}
-			//Print results
-			if ($work['parse'] === 1) {
 
-				// create a new cURL resource
-				// set URL and other appropriate options
-				$ch  = curl_init();
-				$options = array(
-					CURLOPT_URL => 'https://pub.orcid.org/v2.1' . $work['work-summary']['0']['path'],
-					CURLOPT_HEADER => false,
-					CURLOPT_RETURNTRANSFER => 1,
-					CURLOPT_HTTPHEADER => array(
-						'Accept: application/orcid+json'
-					)
-				);
+               $years_batches = array(array('2018', '2017', '2016'), array('2015'), array('2014'), array('2013'), array(2012));
+               //$years_batches = array(array('2018', '2017', '2016'));
+               //$years_batches = array(array('2018', '2017', '2016', '2015', '2014', '2013', 2012));
 
-				curl_setopt_array($ch, $options);
-				curl_multi_add_handle($mh, $ch);
-				$multiCurl[$id] = $ch;
-				$id = $id + 1;
-			}
+		foreach ($years_batches as $years){
+			$papers = self::getPapersForYearsBatch($years, $mergedworks);
+		        $mdata = array_merge($mdata, $papers);
 		}
 
-
-		// While we're still active, execute curl
-		$active = null;
-		do {
-			$mrc = curl_multi_exec($mh, $active);
-                        usleep(50000);
-		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
-
-		while ($active && ($mrc == CURLM_OK)) {
-			// Wait for activity on any curl-connection
-			if (curl_multi_select($mh) != -1) {
-                            usleep(50000);
-			
-
-				// Continue to exec until curl is ready to
-				// give us more data
-				do {
-					$mrc = curl_multi_exec($mh, $active);
-				} while ($mrc == CURLM_CALL_MULTI_PERFORM);
-			}
-		}
-
-		// get content and remove handles
-		foreach($multiCurl as $k => $ch) {
-			$mdata[$k] = json_decode(curl_multi_getcontent($ch), true);
-                            usleep(3000);
-			curl_multi_remove_handle($mh, $ch);
-		}
-		// close
-		curl_multi_close($mh);
 
 		foreach ($mdata as $data) {
 			$year = $data['publication-date']['year']['value'];
@@ -260,7 +276,6 @@ class ModPapersHelper
 				}
 			}
 		}
-		curl_close($ch);
 		$myfile = fopen(dirname(__FILE__) . '/pubs.html', "w") or die("Unable to open file!");
 		fwrite($myfile, $output);
 		fclose($myfile);
