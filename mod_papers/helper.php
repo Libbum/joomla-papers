@@ -11,6 +11,7 @@
  * is derivative of works licensed under the GNU General Public License or
  * other free or open source software licenses.
  */
+
 class ModPapersHelper
 {
     /**
@@ -20,6 +21,29 @@ class ModPapersHelper
      *
      * @access public
      */
+    public static function showPapers($orcids){
+
+        $config = include('config.php');
+	$lastRunLog =  dirname(__FILE__) . '/lastrun.log';
+	$data_file = dirname(__FILE__) . '/pubs_cache_file.html';
+
+	$lastRun = file_get_contents($lastRunLog);
+
+	if (time() - (int)$lastRun >= $config['update_time']) {
+	    //its been more than a day so run our external file
+	    $papers = self::getPapers($orcids);
+	    //update lastrun.log with current time
+	    file_put_contents($lastRunLog, time());
+	    $myfile = fopen($data_file, "w") or die("Unable to open file!");
+	    fwrite($myfile, $papers);
+	    fclose($myfile);
+	} else {
+	    $papers = file_get_contents($data_file);	
+	}
+
+	return $papers;
+    }
+
     public static function getPapers($orcids)
     {
         // create a new cURL resource

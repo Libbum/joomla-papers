@@ -18,7 +18,7 @@ defined('_JEXEC') or die;
 require_once dirname(__FILE__) . '/helper.php';
 
 $orcids = array('0000-0000-0000-0000','0000-0000-0000-0001','0000-0000-0000-0002'); //Align most sanitised to least, will prefer data from earlier in the array.
-$papers = modPapersHelper::getPapers($orcids);
+$papers = modPapersHelper::showPapers($orcids);
 require JModuleHelper::getLayoutPath('mod_papers');
 
 ?>
