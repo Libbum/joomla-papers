@@ -12,6 +12,8 @@
  * other free or open source software licenses.
  */
 
+
+
 class ModPapersHelper
 {
     /**
@@ -21,30 +23,33 @@ class ModPapersHelper
      *
      * @access public
      */
+
+    static $config;
+
     public static function showPapers($orcids){
 
-        $config = include('config.php');
-	$lastRunLog =  dirname(__FILE__) . '/lastrun.log';
-	$data_file = dirname(__FILE__) . '/pubs_cache_file.html';
+        ModPapersHelper::$config = include('config.php');
+        $lastRunLog =  dirname(__FILE__) . '/lastrun.log';
+        $data_file = dirname(__FILE__) . '/pubs_cache_file.html';
 
-	$lastRun = file_get_contents($lastRunLog);
+        $lastRun = file_get_contents($lastRunLog);
 
-	if (time() - (int)$lastRun >= $config['update_time']) {
-	    //its been more than a day so run our external file
-	    $papers = self::getPapers($orcids);
-	    //update lastrun.log with current time
-	    file_put_contents($lastRunLog, time());
-	    $myfile = fopen($data_file, "w") or die("Unable to open file!");
-	    fwrite($myfile, $papers);
-	    fclose($myfile);
-	} else {
-	    $papers = file_get_contents($data_file);	
-	}
+        if (time() - (int)$lastRun >= ModPapersHelper::$config['update_time']) {
+            //its been more than a day so run our external file
+            $papers = self::getPapers($orcids);
+            //update lastrun.log with current time
+            file_put_contents($lastRunLog, time());
+            $myfile = fopen($data_file, "w") or die("Unable to open file!");
+            fwrite($myfile, $papers);
+            fclose($myfile);
+        } else {
+            $papers = file_get_contents($data_file);	
+        }
 
-	return $papers;
+        return $papers;
     }
 
-    public static function getPapers($orcids)
+    private function getPapers($orcids)
     {
         // create a new cURL resource
         $ch  = curl_init();
@@ -96,7 +101,7 @@ class ModPapersHelper
         foreach ($mergedworks as $mkey => $work) {
             //Identify Results earlier than 2011 NOTE: Thiscondition is due to our group's inception year
             $year = $work['work-summary'][0]['publication-date']['year']['value'];
-            if ($year < '2011') {
+            if ($year < ModPapersHelper::$config['start_year']) {
                 $mergedworks[$mkey]['parse'] = 0; //Don't parse this entry
             } else {
                 //Identify Duplicates
