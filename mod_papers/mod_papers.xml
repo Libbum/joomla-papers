@@ -2,7 +2,7 @@
 <extension type="module" version="3.1.0" client="site" method="upgrade">
     <name>Papers</name>
     <author>Tim DuBois</author>
-    <version>1.0</version>
+    <version>2.1</version>
     <description>Pull a list of papers from multilple ORCID sources and display them.</description>
     <files>
         <filename>mod_papers.xml</filename>
