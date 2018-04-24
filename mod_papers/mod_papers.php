@@ -17,8 +17,13 @@ defined('_JEXEC') or die;
 // Include the syndicate functions only once
 require_once dirname(__FILE__) . '/helper.php';
 
-$orcids = array('0000-0000-0000-0000','0000-0000-0000-0001','0000-0000-0000-0002'); //Align most sanitised to least, will prefer data from earlier in the array.
-$papers = modPapersHelper::getPapers($orcids);
+$config = array(
+    'orcids' => ['0000-0000-0000-0000','0000-0000-0000-0001','0000-0000-0000-0002'], //Align most sanitised to least, will prefer data from earlier in the array.
+    'update_time' => 86400,    // update time (unix timestamp; 86400 is 24h)
+    'start_year' => '2011',    // starting year for the publication list
+);
+
+$papers = modPapersHelper::showPapers($config);
 require JModuleHelper::getLayoutPath('mod_papers');
 
 ?>

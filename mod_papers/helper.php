@@ -11,6 +11,9 @@
  * is derivative of works licensed under the GNU General Public License or
  * other free or open source software licenses.
  */
+
+
+
 class ModPapersHelper
 {
     /**
@@ -20,7 +23,30 @@ class ModPapersHelper
      *
      * @access public
      */
-    public static function getPapers($orcids)
+
+    public static function showPapers($config){
+
+        $lastRunLog =  dirname(__FILE__) . '/lastrun.log';
+        $data_file = dirname(__FILE__) . '/pubs_cache_file.html';
+
+        $lastRun = file_get_contents($lastRunLog);
+
+        if (time() - (int)$lastRun >= $config['update_time']) {
+            //its been more than a day so run our external file
+            $papers = self::getPapers($config['orcids'], $config['start_year']);
+            //update lastrun.log with current time
+            file_put_contents($lastRunLog, time());
+            $myfile = fopen($data_file, "w") or die("Unable to open file!");
+            fwrite($myfile, $papers);
+            fclose($myfile);
+        } else {
+            $papers = file_get_contents($data_file);	
+        }
+
+        return $papers;
+    }
+
+    private function getPapers($orcids, $cutoff_year)
     {
         // create a new cURL resource
         $ch  = curl_init();
@@ -72,7 +98,7 @@ class ModPapersHelper
         foreach ($mergedworks as $mkey => $work) {
             //Identify Results earlier than 2011 NOTE: Thiscondition is due to our group's inception year
             $year = $work['work-summary'][0]['publication-date']['year']['value'];
-            if ($year < '2011') {
+            if ($year < $cutoff_year) {
                 $mergedworks[$mkey]['parse'] = 0; //Don't parse this entry
             } else {
                 //Identify Duplicates
