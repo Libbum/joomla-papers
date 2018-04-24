@@ -190,7 +190,12 @@ class ModPapersHelper
                     $volume = $match[1];
                 }
                 if (preg_match('/pages\\s*=\\s*{([0-9-]+)}/', $bibtex, $match)) {
-                    $pages = $match[1];
+                    $pageset = array_values(array_filter(explode("-", $match[1])));
+                    if (count($pageset) > 1) {
+                        $pages = $pageset[0] . '&ndash;' . $pageset[1];
+                    } else {
+                        $pages = $pageset[0];
+                    }
                 }
             }
             if (!is_null($work['contributors']) && array_filter($work['contributors']['contributor'])) {
