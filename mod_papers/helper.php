@@ -40,7 +40,7 @@ class ModPapersHelper
             fwrite($myfile, $papers);
             fclose($myfile);
         } else {
-            $papers = file_get_contents($data_file);	
+            $papers = file_get_contents($data_file);
         }
 
         return $papers;
@@ -182,10 +182,10 @@ class ModPapersHelper
                 $output .= "<br><h2>" . $curr_year . "</h2>";
             }
             $output .= '<b>' . $work['title']['title']['value'] . '</b><br>';
+            $volume = '';
+            $pages  = '';
             if (strcmp($work['citation']['citation-type'], 'BIBTEX') == 0) {
                 $bibtex = $work['citation']['citation-value'];
-                $volume = '';
-                $pages  = '';
                 if (preg_match('/volume\\s*=\\s*{(\\d+)}/', $bibtex, $match)) {
                     $volume = $match[1];
                 }
