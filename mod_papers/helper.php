@@ -46,6 +46,15 @@ class ModPapersHelper
         return $papers;
     }
 
+    private function name($author) {
+        $names = explode(", ", $author);
+        if (count($names) > 1) {
+            return $names[1] . ' ' . $names[0];
+        } else {
+            return $names[0];
+        }
+    }
+
     private function getPapers($orcids, $cutoff_year)
     {
         // create a new cURL resource
@@ -173,50 +182,47 @@ class ModPapersHelper
                 $output .= "<br><h2>" . $curr_year . "</h2>";
             }
             $output .= '<b>' . $work['title']['title']['value'] . '</b><br>';
-
             if (strcmp($work['citation']['citation-type'], 'BIBTEX') == 0) {
                 $bibtex = $work['citation']['citation-value'];
                 $volume = '';
                 $pages  = '';
-                if (preg_match('/volume\\s?=\\s?{(\\d+)}/', $bibtex, $match)) {
+                if (preg_match('/volume\\s*=\\s*{(\\d+)}/', $bibtex, $match)) {
                     $volume = $match[1];
                 }
-                if (preg_match('/pages\\s?=\\s?{([0-9-]+)}/', $bibtex, $match)) {
+                if (preg_match('/pages\\s*=\\s*{([0-9-]+)}/', $bibtex, $match)) {
                     $pages = $match[1];
                 }
             }
-
-            if (!is_null($work['contributors'])) {
+            if (!is_null($work['contributors']) && array_filter($work['contributors']['contributor'])) {
                 foreach ($work['contributors']['contributor'] as $authors) {
                     if (($authors === reset($work['contributors']['contributor'])) && ($authors === end($work['contributors']['contributor']))) {
-                        $output .= $authors['credit-name']['value'] . '<br>';
+                        $output .= name($authors['credit-name']['value']) . '<br>';
                     } elseif ($authors === reset($work['contributors']['contributor'])) {
-                        $output .= $authors['credit-name']['value'];
+                        $output .= name($authors['credit-name']['value']);
                     } elseif ($authors === end($work['contributors']['contributor'])) {
-                        $output .= ' and ' . $authors['credit-name']['value'] . '<br>';
+                        $output .= ' and ' . name($authors['credit-name']['value']) . '<br>';
                     } else {
-                        $output .= ', ' . $authors['credit-name']['value'];
+                        $output .= ', ' . name($authors['credit-name']['value']);
                     }
                 }
             } else {
                 //Get authorlist from bibtex
-                if (preg_match('/author\\s?=\\s?{(.+)}/', $bibtex, $match)) {
+                if (preg_match('/author\\s*=\\s*{(.+)}/U', $bibtex, $match)) {
                     $authorstr = $match[1];
                     $authors   = explode(" and ", $authorstr);
                     foreach ($authors as $author) {
                         if (($author === reset($authors)) && ($author === end($authors))) {
-                            $output .= $author . '<br>';
+                            $output .= name($author) . '<br>';
                         } elseif ($author === reset($authors)) {
-                            $output .= $author;
+                            $output .= name($author);
                         } elseif ($author === end($authors)) {
-                            $output .= ' and ' . $author . '<br>';
+                            $output .= ' and ' . name($author) . '<br>';
                         } else {
-                            $output .= ', ' . $author;
+                            $output .= ', ' . name($author);
                         }
                     }
                 }
             }
-
             if (is_array($work['external-ids']['external-id'])) {
                 foreach ($work['external-ids']['external-id'] as $ids) {
                     if (strcmp($ids['external-id-type'], 'doi') == 0) {
