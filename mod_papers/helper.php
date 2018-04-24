@@ -196,13 +196,13 @@ class ModPapersHelper
             if (!is_null($work['contributors']) && array_filter($work['contributors']['contributor'])) {
                 foreach ($work['contributors']['contributor'] as $authors) {
                     if (($authors === reset($work['contributors']['contributor'])) && ($authors === end($work['contributors']['contributor']))) {
-                        $output .= name($authors['credit-name']['value']) . '<br>';
+                        $output .= self::name($authors['credit-name']['value']) . '<br>';
                     } elseif ($authors === reset($work['contributors']['contributor'])) {
-                        $output .= name($authors['credit-name']['value']);
+                        $output .= self::name($authors['credit-name']['value']);
                     } elseif ($authors === end($work['contributors']['contributor'])) {
-                        $output .= ' and ' . name($authors['credit-name']['value']) . '<br>';
+                        $output .= ' and ' . self::name($authors['credit-name']['value']) . '<br>';
                     } else {
-                        $output .= ', ' . name($authors['credit-name']['value']);
+                        $output .= ', ' . self::name($authors['credit-name']['value']);
                     }
                 }
             } else {
@@ -212,13 +212,13 @@ class ModPapersHelper
                     $authors   = explode(" and ", $authorstr);
                     foreach ($authors as $author) {
                         if (($author === reset($authors)) && ($author === end($authors))) {
-                            $output .= name($author) . '<br>';
+                            $output .= self::name($author) . '<br>';
                         } elseif ($author === reset($authors)) {
-                            $output .= name($author);
+                            $output .= self::name($author);
                         } elseif ($author === end($authors)) {
-                            $output .= ' and ' . name($author) . '<br>';
+                            $output .= ' and ' . self::name($author) . '<br>';
                         } else {
-                            $output .= ', ' . name($author);
+                            $output .= ', ' . self::name($author);
                         }
                     }
                 }
